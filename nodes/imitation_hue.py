@@ -199,7 +199,7 @@ class ImitationHueNode:
         return {
             "required": {
                 "imitation_image": ("IMAGE",),
-                "target_image": ("IMAGE",),
+                "target_images": ("IMAGE",),
                 "strength": ("FLOAT", {"default": 1.0, "min": 0.1, "max": 1.0, "step": 0.1}),
                 "skin_protection": ("FLOAT", {"default": 0.2, "min": 0, "max": 1.0, "step": 0.1}),
                 "auto_brightness": ("BOOLEAN", {"default": True}),
@@ -219,28 +219,35 @@ class ImitationHueNode:
     CATEGORY = "MingNodes/Image Process"
 
     RETURN_TYPES = ("IMAGE",)
-    RETURN_NAMES = ("image",)
+    RETURN_NAMES = ("images",)
     FUNCTION = "imitation_hue"
 
-    def imitation_hue(self, imitation_image, target_image, strength, skin_protection, auto_brightness, brightness_range,
+    def imitation_hue(self, imitation_image, target_images, strength, skin_protection, auto_brightness, brightness_range,
                       auto_contrast, contrast_range, auto_saturation, saturation_range, auto_tone, tone_strength,
                       mask=None):
-        for img in imitation_image:
-            img_cv1 = tensor2cv2(img)
+        # Convert imitation image to CV2 format
+        imitation_cv = tensor2cv2(imitation_image[0])
 
-        for img in target_image:
-            img_cv2 = tensor2cv2(img)
-
-        img_cv3 = None
+        # Process mask if provided
+        mask_cv = None
         if mask is not None:
-            for img3 in mask:
-                img_cv3 = img3.cpu().numpy()
-                img_cv3 = (img_cv3 * 255).astype(np.uint8)
+            mask_cv = (mask[0].cpu().numpy() * 255).astype(np.uint8)
 
-        result_img = color_transfer(img_cv1, img_cv2, img_cv3, strength, skin_protection, auto_brightness,
-                                    brightness_range,auto_contrast, contrast_range, auto_saturation,
-                                    saturation_range, auto_tone, tone_strength)
-        result_img = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
-        rst = torch.from_numpy(result_img.astype(np.float32) / 255.0).unsqueeze(0)
+        # Process each target image
+        processed_images = []
+        for target_img in target_images:
+            target_cv = tensor2cv2(target_img)
 
-        return (rst,)
+            result_img = color_transfer(imitation_cv, target_cv, mask_cv, strength, skin_protection, auto_brightness,
+                                        brightness_range, auto_contrast, contrast_range, auto_saturation,
+                                        saturation_range, auto_tone, tone_strength)
+            
+            # Convert result back to RGB and then to torch tensor
+            result_rgb = cv2.cvtColor(result_img, cv2.COLOR_BGR2RGB)
+            result_tensor = torch.from_numpy(result_rgb.astype(np.float32) / 255.0)
+            processed_images.append(result_tensor)
+
+        # Stack all processed images into a single tensor
+        output_images = torch.stack(processed_images)
+
+        return (output_images,)
